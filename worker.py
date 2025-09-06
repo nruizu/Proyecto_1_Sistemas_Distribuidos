@@ -1,0 +1,96 @@
+# worker.py
+import os, sys, time, glob, requests
+from collections import defaultdict
+from itertools import groupby
+from dotenv import load_dotenv
+import hashlib
+
+load_dotenv()
+
+MASTER = os.environ["MASTER_URL"]
+WORKER_ID = os.environ["WORKER_ID"]
+HASHSEED = 123
+
+if not MASTER or not WORKER_ID:
+    sys.exit("Error: faltan variables MASTER_URL o WORKER_ID en el entorno (.env)")
+
+def load_user(user_code_path):
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("jobmod", user_code_path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    map_fn = getattr(mod, "map")
+    reduce_fn = getattr(mod, "reduce")
+    return map_fn, reduce_fn
+
+# crea un hash con hashlib y una semilla para que todas las palabras vayan al mismo bucket
+def part(key, R):
+    return hash(str(key))%R
+
+def run_map(task):
+    user_code = task["user_code_path"]
+    map_fn = load_user(user_code)[0]
+    R = task["reducers"]
+    inter_base = task["intermediate_dir"]
+    os.makedirs(inter_base, exist_ok=True)
+    # devuelve una lista de diccionarios predeterminados
+    buckets = [defaultdict(int) for _ in range(R)]
+
+    with open(task["split_path"], "r", encoding="utf-8", errors="ignore") as f:
+        for line in f:
+            for k, v in map_fn(line):
+                # buckets[indice de la lista de diccionarios][clave diccionario]
+                buckets[part(k, R)][k] += v
+
+    # escribir un archivo por bucket
+    for r in range(R):
+        bdir = os.path.join(inter_base, f"bucket-{r}")
+        os.makedirs(bdir, exist_ok=True)
+        outp = os.path.join(bdir, f"mapper-{WORKER_ID}.part")
+        with open(outp, "a", encoding="utf-8") as out:
+            for k, c in buckets[r].items():
+                print(f"{k} {c}")
+                out.write(f"{k} {c}\n")
+
+def run_reduce(task):
+    # reduce "identity" de WordCount (suma por clave)
+    inter = task["intermediate_dir"]
+    outdir = task["output_dir"]
+    r = task["bucket"]
+    user_code = task["user_code_path"]
+    reduce_fn = load_user(user_code)[1]
+    outp = os.path.join(outdir, f"part-{r:05d}.txt")
+
+    lines = []
+    for p in glob.glob(os.path.join(inter, f"bucket-{r}", "*.part")):
+        with open(p, "r", encoding="utf-8") as f:
+            for line in sorted(f):
+                k, v = line.strip().split()
+                lines.append((k, int(v)))
+
+    lines.sort(key=lambda kv: kv[0])
+    with open(outp, "a", encoding="utf-8") as out:
+        for key, group in groupby(lines, key=lambda kv: kv[0]):
+            values_list = [v for _, v in group]
+            total = reduce_fn(key, values_list)
+            out.write(f"{key} {total}\n")
+
+def main():
+    # registro opcional
+    requests.post(f"{MASTER}/workers/register", json={"worker_id": WORKER_ID})
+    while True:
+        t = requests.post(f"{MASTER}/tasks/next", json={"worker_id": WORKER_ID}).json()
+        if not t or not t.get("id"):
+            time.sleep(1)
+            continue
+        try:
+            if t["type"] == "map":
+                run_map(t)
+            else:
+                run_reduce(t)
+            requests.post(f"{MASTER}/tasks/{t['id']}/result", json={"ok": True})
+        except Exception as e:
+            requests.post(f"{MASTER}/tasks/{t['id']}/result", json={"ok": False, "error": str(e)})
+
+if __name__ == "__main__":
+    main()
