@@ -9,7 +9,7 @@ load_dotenv()
 
 MASTER = os.environ["MASTER_URL"]
 WORKER_ID = os.environ["WORKER_ID"]
-HASHSEED = 123
+MAP_COUNT = 0
 
 if not MASTER or not WORKER_ID:
     sys.exit("Error: faltan variables MASTER_URL o WORKER_ID en el entorno (.env)")
@@ -28,29 +28,26 @@ def part(key, R):
     return hash(str(key))%R
 
 def run_map(task):
+    global MAP_COUNT
+    MAP_COUNT += 1
     user_code = task["user_code_path"]
     map_fn = load_user(user_code)[0]
     R = task["reducers"]
     inter_base = task["intermediate_dir"]
     os.makedirs(inter_base, exist_ok=True)
     # devuelve una lista de diccionarios predeterminados
-    buckets = [defaultdict(int) for _ in range(R)]
+    mapped = defaultdict(int)
 
     with open(task["split_path"], "r", encoding="utf-8", errors="ignore") as f:
         for line in f:
             for k, v in map_fn(line):
-                # buckets[indice de la lista de diccionarios][clave diccionario]
-                buckets[part(k, R)][k] += v
+                mapped[k] += v
 
-    # escribir un archivo por bucket
-    for r in range(R):
-        bdir = os.path.join(inter_base, f"bucket-{r}")
-        os.makedirs(bdir, exist_ok=True)
-        outp = os.path.join(bdir, f"mapper-{WORKER_ID}.part")
-        with open(outp, "a", encoding="utf-8") as out:
-            for k, c in buckets[r].items():
-                print(f"{k} {c}")
-                out.write(f"{k} {c}\n")
+    outp = os.path.join(inter_base, f"mapper-{WORKER_ID}{MAP_COUNT}.txt")
+    with open(outp, "w", encoding="utf-8") as out:
+        for k, c in mapped.items():
+            print(f"{k} {c}")
+            out.write(f"{k} {c}\n")
 
 def run_reduce(task):
     # reduce "identity" de WordCount (suma por clave)
@@ -62,7 +59,7 @@ def run_reduce(task):
     outp = os.path.join(outdir, f"part-{r:05d}.txt")
 
     lines = []
-    for p in glob.glob(os.path.join(inter, f"bucket-{r}", "*.part")):
+    for p in glob.glob(os.path.join(inter, f"bucket-{r}", "*.txt")):
         with open(p, "r", encoding="utf-8") as f:
             for line in sorted(f):
                 k, v = line.strip().split()
@@ -81,7 +78,7 @@ def main():
     while True:
         t = requests.post(f"{MASTER}/tasks/next", json={"worker_id": WORKER_ID}).json()
         if not t or not t.get("id"):
-            time.sleep(1)
+            time.sleep(0.5)
             continue
         try:
             if t["type"] == "map":

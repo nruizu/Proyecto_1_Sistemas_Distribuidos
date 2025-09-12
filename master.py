@@ -1,13 +1,15 @@
 # master.py
 from fastapi import FastAPI, UploadFile, File, Form
 from pydantic import BaseModel
-import os, uuid
+import os, uuid, glob
 
 app = FastAPI()
 
 BASE = os.path.abspath("shared")
+NUM_WORKERS = 0
 JOBS = {}   # job_id -> dict
 TASKS = []  # cola de tareas
+WORKED = [] #lista de nodos que han trabajado (se usa para realizar el balance de cargas)
 
 class JobSpec(BaseModel):
     user_code_path: str
@@ -15,29 +17,79 @@ class JobSpec(BaseModel):
     reducers: int = 2
     split_size_mb: int = 64
 
+#funcion para asignar los pares key-values a los reducers
+def part(key, R):
+    return hash(str(key))%R
+
+def merge_files(files, merge_path):
+    with open(merge_path, "w", encoding="utf-8") as f1:
+        for path in files:
+            with open(path, "r", encoding="utf-8") as f2:
+                f1.writelines(f2)
+
+def sort_shuffle(job_id, job):
+
+    intermediate_dir_map = job["intermediate_dir"]
+    partitions_files_path = os.path.join(intermediate_dir_map, "*.txt")
+    files = glob.glob(partitions_files_path)
+
+    # Se crea el directorio intermedio para el sort and shuffle
+    inter_reduce = os.path.join(BASE, "intermediate_reduce", f"job-{job_id}")
+    os.makedirs(inter_reduce, exist_ok=True)
+
+    # Archivo donde se juntan los mappers intermedios para ordenarlos
+    merge_path = os.path.join(inter_reduce, "complete.txt")
+
+    # Cantidad de reducers definidos
+    R = job["reducers"]
+    
+    # Se crean los buckets (uno por cada reducer)
+    for r in range(R):
+        os.makedirs(os.path.join(inter_reduce, f"bucket-{r}"), exist_ok=True)
+
+    merge_files(files, merge_path)
+
+    with open(merge_path, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+    lines.sort()
+    with open(merge_path, "w", encoding="utf-8") as f:
+        f.writelines(lines)
+
+    i = 0
+    with open(merge_path, "r", encoding="utf-8") as f:
+        for lines in f:
+            words = lines.split()
+            r = part(words[0], R)
+            with open(os.path.join(inter_reduce, f"bucket-{r}", f"reduce-{i:05d}.txt"), "a", encoding="utf-8") as f:
+                f.write(lines)
+
+    job["intermediate_dir"] = inter_reduce
+
 def make_splits(dataset_path, split_dir, lines_per_split = 5):
     os.makedirs(split_dir, exist_ok=True)
-    with open(dataset_path, "r", encoding="utf-8") as f:
-        i = 0
-        buff = []
-        for line in f:
-            buff.append(line)
-            if len(buff) >= lines_per_split:
-                with open(os.path.join(split_dir, f"split-{i:05d}"), "w", encoding="utf-8") as out:
-                    out.writelines(buff)
-                buff = []
-                i += 1
-        if buff:
-            with open(os.path.join(split_dir, f"split-{i:05d}"), "w", encoding="utf-8") as out:
-                out.writelines(buff)
-            i += 1
+    files = glob.glob(dataset_path)
+    i = 0
+    buff = []
+    for path in files:
+        with open(path, "r", errors="ignore") as f:
+            for line in f:
+                buff.append(line)
+                if len(buff) >= lines_per_split:
+                    with open(os.path.join(split_dir, f"split-{i:05d}"), "w", encoding="utf-8") as out:
+                        out.writelines(buff)
+                    buff = []
+                    i += 1
+    if buff:
+        with open(os.path.join(split_dir, f"split-{i:05d}"), "w", encoding="utf-8") as out:
+            out.writelines(buff)
+        i += 1
     return i
 
 @app.post("/jobs")
 def create_job(spec: JobSpec):
     job_id = str(uuid.uuid4())[:8]
     split_dir = os.path.join(BASE, "splits", job_id)
-    intermediate_dir = os.path.join(BASE, "intermediate", f"job-{job_id}")
+    intermediate_dir = os.path.join(BASE, "intermediate_map", f"job-{job_id}")
     output_dir = os.path.join(BASE, "output", f"job-{job_id}")
     os.makedirs(intermediate_dir, exist_ok=True)
     os.makedirs(output_dir, exist_ok=True)
@@ -92,15 +144,23 @@ def upload_job(
 
 @app.post("/workers/register")
 def register(body: dict):
+    global NUM_WORKERS
+    NUM_WORKERS += 1
     return {"ok": True}
 
 @app.post("/tasks/next")
 def next_task(worker: dict):
+    global NUM_WORKERS, WORKED
+    if NUM_WORKERS == len(WORKED):
+        WORKED = []
+    if worker.get("worker_id", "w?") in WORKED:
+        return {"task": None}
     # Primero intenta dar un MAP
     for t in TASKS:
         if t["state"] == "idle" and t["type"] == "map":
             t["state"] = "in-progress"
             t["worker"] = worker.get("worker_id", "w?")
+            WORKED.append(t["worker"])
             return t
 
     # Si no quedan MAP pendientes, y aún no generamos REDUCE → generarlos 1 sola vez
@@ -114,6 +174,8 @@ def next_task(worker: dict):
             if not remaining:
                 # Transición a REDUCE
                 job["status"] = "REDUCE"
+                # Se ordenan y se reparten los resultados de los mappers
+                sort_shuffle(job_id, job)
                 # Numero de reducers
                 R = job["reducers"]
                 for r in range(R):
@@ -127,27 +189,49 @@ def next_task(worker: dict):
                         "output_dir": job["output_dir"],
                         "user_code_path": job["user_code_path"]
                     })
+            remaining = None
 
     # Entregar REDUCE si hay
     for t in TASKS:
         if t["state"] == "idle" and t["type"] == "reduce":
             t["state"] = "in-progress"
             t["worker"] = worker.get("worker_id", "w?")
+            WORKED.append(t["worker"])
             return t
+    
+    
 
     return {"task": None}
 
 @app.post("/tasks/{task_id}/result")
 def task_result(task_id: str, body: dict):
+    ok = bool(body.get("ok", True))
+    job_id = None
+    task_type = None
+    remaining = None
     # Marca la tarea como done
     for t in TASKS:
         if t["id"] == task_id:
-            t["state"] = "done"
+            t["state"] = "done" if ok else "idle"
             t["meta"] = body
+            job_id = t["job_id"]
+            task_type = t["type"]
             break
 
-    # Si no quedan tareas del job → marcar como DONE
-    # (opcional, para consultar luego)
+    
+    if ok and task_type == "reduce" and job_id:
+        for t in TASKS:
+            if t["job_id"] == job_id and t["type"] == "reduce" and t["state"] != "done":
+                remaining = t
+        if not remaining:
+            output_dir = os.path.join(BASE, "output", f"job-{job_id}")
+            dir_b = os.path.join(output_dir, "*.txt")
+            files = files = glob.glob(dir_b)
+            output_file = os.path.join(output_dir, "Final.txt")
+            merge_files(files, output_file)
+            JOBS[job_id]["status"] = "DONE"
+            JOBS[job_id]["final_output"] = output_file
+
     return {"ok": True}
 
 @app.get("/jobs/{job_id}")

@@ -1,6 +1,6 @@
 {
   "user_code_path": "shared/jobs/job.py",
-  "dataset_path": "shared/input/corpus-utf8.txt",
+  "dataset_path": "shared/input/*.txt",
   "reducers": 2,
   "split_size_mb": 64
 }
