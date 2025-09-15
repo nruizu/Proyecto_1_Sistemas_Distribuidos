@@ -23,10 +23,6 @@ def load_user(user_code_path):
     reduce_fn = getattr(mod, "reduce")
     return map_fn, reduce_fn
 
-# crea un hash con hashlib y una semilla para que todas las palabras vayan al mismo bucket
-def part(key, R):
-    return hash(str(key))%R
-
 def run_map(task):
     global MAP_COUNT
     MAP_COUNT += 1
@@ -73,7 +69,6 @@ def run_reduce(task):
             out.write(f"{key} {total}\n")
 
 def main():
-    # registro opcional
     requests.post(f"{MASTER}/workers/register", json={"worker_id": WORKER_ID})
     while True:
         t = requests.post(f"{MASTER}/tasks/next", json={"worker_id": WORKER_ID}).json()
