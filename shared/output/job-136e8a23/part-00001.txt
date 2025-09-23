@@ -1,0 +1,5 @@
+el 40
+feliz 20
+hash 20
+mora 40
+y 20

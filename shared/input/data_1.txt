@@ -1,3 +1,168 @@
-perro gato gato
-perro perro
-system
+How to Install NFS Server and Client on Ubuntu 24.04
+by Karim Buzdar
+April 3, 2025
+How to Install NFS Server and Client on Ubuntu 24.04
+NFS (Network File System) is a file system that allows file sharing over the local file system. It is commonly used in Linux environments, especially in Ubuntu 24.04. NFS makes file sharing easy between different machines and users. It eliminates the burden faced by individual file servers and allows users to access shared files from a centralized server. The use of NFS has increased dramatically in data centers, media rooms, and dev teams.
+
+This detailed tutorial will contain step-by-step instructions on how you can install and set up NFS on Ubuntu 24.04.
+
+How to Install NFS on Ubuntu 24.04
+In simpler words, NFS is centralized storage for information such as text documents, images and videos. It saves these so that multiple systems can easily access them.
+
+Prerequisites
+
+You will need the following to install NFS:
+
+Two Ubuntu 24.04 Systems: One can be used as the server the other as a client.
+Root or Sudo Access: You must have the correct permission to log in as root or user sudo to make changes to the setup or settings of NFS.
+Network Connectivity: Ensure same network information for both machines so that they can communicate with one another.
+Step 1: Install NFS Server on Ubuntu 24.04
+The first step is to install an NFS server package on the system, which will act as the server. To do so:
+
+Update the Package List:
+
+Execute the following command to update your package list:
+
+sudo apt update
+sudo apt update
+Install the NFS Kernel Server:
+
+To install the NFS server package, execute the command shown below:
+
+sudo apt install nfs-kernel-server
+sudo apt install nfs-kernel-server
+Confirm the Installation:
+
+To confirm that NFS service is active, run the command. Now, you receive a status response with an active running state for NFS:
+
+sudo systemctl status nfs-kernel-server
+sudo systemctl status nfs-kernel-server
+Step 2: Configure the NFS Server
+After installing the NFS server, users need to configure it to share directories:
+
+Create a Shared Directory:
+
+In case you need to share any directories, create a shared one in the root home and name it for ease:
+
+sudo mkdir -p /mnt/nfs_share
+sudo mkdir -p /mnt/nfs_share
+Set Directory Permissions:
+
+Adjust the permissions of the shared directory to ensure clients can access it:
+
+sudo chown nobody:nogroup /mnt/nfs_share
+sudo chown nobody:nogroup /mnt/nfs_share
+Grant the restricted level access permissions to ensure clients can access it.
+
+sudo chmod 777 /mnt/nfs_share
+sudo chmod 777 /mnt/nfs_share
+Edit the Exports File:
+
+After that, open the /etc/exports file, which contains the shared and client access configurations:
+
+sudo nano /etc/exports
+sudo nano /etc/exports
+You can replace client_ip with the specific address of the system with which you would like to share it:
+
+/mnt/nfs_share client_ip(rw,sync,no_subtree_check)
+/mnt/nfs_share client_ip(rw,sync,no_subtree_check)
+These are the conditions that will be active on sharing domains:
+
+rw: read-write permission, granting the ability to write and edit the directory.
+
+sync: Requests acknowledgment will only be given after the changes have been successfully written to the disk.
+
+no_subtree_check: Here, performance is improved by turning off subtree check.
+
+To allow sharing the directory for all clients in a subnet, do the following:
+
+/mnt/nfs_share 192.168.1.0/24(rw,sync,no_subtree_check)
+/mnt/nfs_share 192.168.1.0/24(rw,sync,no_subtree_check)
+Export the Shared Directory:
+
+After the changes have been made, the next step to take is to export the shared directory:
+
+sudo exportfs -a
+sudo exportfs -a
+Restart the NFS Server:
+
+The next step is to restart the NFS service so that the system can make use of the new configuration:
+
+sudo systemctl restart nfs-kernel-server
+sudo systemctl restart nfs-kernel-server
+Step 3: Allow Clients Through Firewall
+For those making use of UFW, you have to allow clients through the firewalls:
+
+sudo ufw allow from [clientIP or clientSubnetIP] to any port nfs
+sudo ufw allow from [clientIP or clientSubnetIP] to any port nfs
+To confirm that this operation has been completed, type the following:
+
+sudo ufw status
+sudo ufw status
+Step 4: Install NFS Client on Ubuntu 24.04
+Install the NFS client package in the client machine to enable access to the shared directory. To do so:
+
+Update the Package List:
+
+Do the following to update the package list:
+
+sudo apt update
+sudo apt update
+Install the NFS Client:
+
+Install the NFS client package:
+
+sudo apt install nfs-common
+sudo apt install nfs-common
+Step 5: Mount the NFS Share on the Client
+After you install the NFS client, you will be able to mount the directory shared on the server:
+
+Create a Mount Point:
+
+Make a directory that will hold the shared files that are accessible:
+
+sudo mkdir -p /mnt/nfs_client_share
+sudo mkdir -p /mnt/nfs_client_share
+Mount the NFS Share:
+
+Use this command to mount the shared directory (make sure to put server_ip where the address of the NFS server is):
+
+sudo mount server_ip:/mnt/nfs_share /mnt/nfs_client_share
+sudo mount server_ip:/mnt/nfs_share /mnt/nfs_client_share
+Verify the Mount:
+
+To check whether the NFS share has been mounted:
+
+df -h
+df -h
+After executing the command, the shared directory should be present among other items.
+
+Step 6: Automount the NFS Share (Optional)
+If you want to mount the NFS share automatically at boot, add an entry in /etc/fstab.
+
+Edit the fstab File:
+
+Open the file using a text editor of your choice:
+
+sudo nano /etc/fstab
+sudo nano /etc/fstab
+Add the NFS Share:
+
+Add this line to the file (make sure you put the NFS server’s IP address instead of server_ip):
+
+server_ip:/mnt/nfs_share /mnt/nfs_client_share nfs defaults 0 0
+server_ip:/mnt/nfs_share /mnt/nfs_client_share nfs defaults 0 0
+Test the Configuration:
+
+Test the configuration by unmounting and remounting all filesystems:
+
+sudo umount /mnt/nfs_client_share
+sudo umount /mnt/nfs_client_share
+Now, mount all filesystems listed in the /etc/fstab file, typically used during system startup or to apply changes made to the file:
+
+sudo mount -a
+sudo mount -a
+Step 7: Test the NFS Setup
+Finally, check that the NFS setup works by performing the following steps:
+
+Create a Test File on the Server:
