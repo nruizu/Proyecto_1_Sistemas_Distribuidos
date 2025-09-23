@@ -5,7 +5,8 @@ from itertools import groupby
 from dotenv import load_dotenv
 import hashlib
 
-load_dotenv("/home/ubuntu/.env")
+if not load_dotenv():
+    load_dotenv("/home/ubuntu/.env")
 
 MASTER = os.environ["MASTER_URL"]
 WORKER_ID = os.environ["WORKER_ID"]
