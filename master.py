@@ -121,28 +121,6 @@ def create_job(spec: JobSpec):
     }
     return {"job_id": job_id, "maps": M, "reducers": spec.reducers}
 
-@app.post("/jobs/upload")
-def upload_job(
-    code: UploadFile = File(...),
-    dataset_path: str = Form(...),
-    reducers: int = Form(2),
-    split_size_mb: int = Form(64),
-):
-    job_id = str(uuid.uuid4())[:8]
-    job_dir = os.path.join(BASE, "jobs", f"job-{job_id}")
-    os.makedirs(job_dir, exist_ok=True)
-    code_path = os.path.join(job_dir, "job.py")
-    with open(code_path, "wb") as out:
-        out.write(code.file.read())
-
-    # Reutilizamos create_job logic:
-    return create_job(JobSpec(
-        user_code_path=code_path,
-        dataset_path=dataset_path,
-        reducers=reducers,
-        split_size_mb=split_size_mb
-    ))
-
 @app.post("/workers/register")
 def register(body: dict):
     global NUM_WORKERS
