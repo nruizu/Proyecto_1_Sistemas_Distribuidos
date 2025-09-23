@@ -1,5 +1,6 @@
 # master.py
 from fastapi import FastAPI, UploadFile, File, Form
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import os, uuid, glob
 
@@ -250,6 +251,18 @@ def job_status(job_id: str):
         "reduces_done": len(done_reduces),
         "output_dir": job["output_dir"]
     }
+
+@app.get("/jobs/{job_id}/result")
+def get_result(job_id: str):
+    job = JOBS.get(job_id)
+    if not job:
+        return {"error": "unknown job"}
+
+    final_path = os.path.join(job["output_dir"], "Final.txt")
+    if not os.path.exists(final_path):
+        return {"error": "Final.txt not found"}
+
+    return FileResponse(final_path, media_type="text/plain", filename="Final.txt")
 
 @app.get("/_debug/tasks")
 def debug_tasks():
