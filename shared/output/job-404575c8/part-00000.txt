@@ -1,8 +1,0 @@
-duerme 20
-gato 42
-hola 40
-ladra 20
-perro 83
-system 1
-systemï 1
-triste 20
