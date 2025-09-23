@@ -163,7 +163,7 @@ def next_task(worker: dict):
             WORKED.append(t["worker"])
             return t
 
-    # Si no quedan MAP pendientes, y aún no generamos REDUCE → generarlos 1 sola vez
+    # Si no quedan MAP pendientes, y aún no generamos reduce se generan solo 1 vez
     # Detecta si hay algún job en estado MAP con todos los MAP "done"
     remaining = None
     for job_id, job in JOBS.items():

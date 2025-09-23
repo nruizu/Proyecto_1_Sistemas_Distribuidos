@@ -46,7 +46,6 @@ def run_map(task):
             out.write(f"{k} {c}\n")
 
 def run_reduce(task):
-    # reduce "identity" de WordCount (suma por clave)
     inter = task["intermediate_dir"]
     outdir = task["output_dir"]
     r = task["bucket"]
@@ -57,11 +56,10 @@ def run_reduce(task):
     lines = []
     for p in glob.glob(os.path.join(inter, f"bucket-{r}", "*.txt")):
         with open(p, "r", encoding="utf-8") as f:
-            for line in sorted(f):
+            for line in f:
                 k, v = line.strip().split()
                 lines.append((k, int(v)))
 
-    lines.sort(key=lambda kv: kv[0])
     with open(outp, "a", encoding="utf-8") as out:
         for key, group in groupby(lines, key=lambda kv: kv[0]):
             values_list = [v for _, v in group]
