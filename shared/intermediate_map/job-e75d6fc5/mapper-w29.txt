@@ -1,0 +1,11 @@
+el 6
+perro 9
+ladra 3
+gato 5
+duerme 3
+y 2
+feliz 2
+triste 2
+hola 4
+mora 4
+hash 2

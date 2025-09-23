@@ -1,0 +1,4 @@
+gato 42
+hola 40
+triste 20
+y 20

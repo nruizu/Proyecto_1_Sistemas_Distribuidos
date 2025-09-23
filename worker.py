@@ -11,6 +11,7 @@ MASTER = os.environ["MASTER_URL"]
 WORKER_ID = os.environ["WORKER_ID"]
 MAP_COUNT = 0
 
+print(f"[BOOT] MASTER={MASTER} WORKER_ID={WORKER_ID}")
 if not MASTER or not WORKER_ID:
     sys.exit("Error: faltan variables MASTER_URL o WORKER_ID en el entorno (.env)")
 

@@ -1,0 +1,13 @@
+gato 42
+hola 40
+triste 20
+y 20
+duerme 20
+el 40
+feliz 20
+hash 20
+ladra 20
+mora 40
+perro 83
+system 1
+systemï 1
