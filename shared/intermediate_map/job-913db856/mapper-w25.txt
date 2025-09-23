@@ -1,4 +1,0 @@
-hola 1
-mora 2
-hash 1
-system 1
