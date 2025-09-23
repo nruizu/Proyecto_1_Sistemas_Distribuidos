@@ -11,7 +11,6 @@ NUM_WORKERS = 0
 JOBS = {}   # job_id -> dict
 TASKS = []  # cola de tareas
 WORKED = [] #lista de nodos que han trabajado (se usa para realizar el balance de cargas)
-WORKERS = set()
 
 class JobSpec(BaseModel):
     user_code_path: str
@@ -147,12 +146,8 @@ def upload_job(
 @app.post("/workers/register")
 def register(body: dict):
     global NUM_WORKERS
-    global WORKERS
-    wid = body.get("worker_id")
-    if wid and wid not in WORKERS:
-        WORKERS.add(wid)
-        NUM_WORKERS = len(WORKERS)
-    return {"ok": True, "workers": list(WORKERS)}
+    NUM_WORKERS += 1
+    return {"ok": True}
 
 @app.post("/tasks/next")
 def next_task(worker: dict):
